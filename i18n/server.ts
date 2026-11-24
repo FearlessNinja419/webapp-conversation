@@ -1,30 +1,52 @@
-import 'server-only'
-
 import { cookies, headers } from 'next/headers'
 import Negotiator from 'negotiator'
 import { match } from '@formatjs/intl-localematcher'
-import type { Locale } from '.'
-import { i18n } from '.'
+import { i18n } from './index'
 
-export const getLocaleOnServer = async (): Promise<Locale> => {
-  // @ts-expect-error locales are readonly
-  const locales: string[] = i18n.locales
-
-  let languages: string[] | undefined
-  // get locale from cookie
-  const localeCookie = (await cookies()).get('locale')
-  languages = localeCookie?.value ? [localeCookie.value] : []
-
-  if (!languages.length) {
-    // Negotiator expects plain object so we need to transform headers
-    const negotiatorHeaders: Record<string, string> = {}
-    const headersList = await headers()
-    headersList.forEach((value, key) => (negotiatorHeaders[key] = value))
-    // Use negotiator and intl-localematcher to get best locale
-    languages = new Negotiator({ headers: negotiatorHeaders }).languages()
+export const getLocaleOnServer = async (): Promise<string> => {
+  // 1. Try reading from cookie first
+  try {
+    const cookieStore = await cookies()
+    const localeCookie = cookieStore.get('locale')?.value
+    if (localeCookie && i18n.locales.includes(localeCookie as any)) {
+      return localeCookie
+    }
+  } catch {
+    // Continue if cookie lookup fails
   }
 
-  // match locale
-  const matchedLocale = match(languages, locales, i18n.defaultLocale) as Locale
-  return matchedLocale
+  // 2. Try reading from Accept-Language header safely
+  try {
+    const headersList = await headers()
+    let acceptLanguage = headersList.get('accept-language') || 'en-US'
+
+    // Replace wildcard '*' which causes Intl.getCanonicalLocales to throw RangeError
+    if (acceptLanguage.includes('*')) {
+      acceptLanguage = acceptLanguage.replace(/\*/g, 'en')
+    }
+
+    const languages = new Negotiator({
+      headers: { 'accept-language': acceptLanguage },
+    }).languages()
+
+    const validLanguages = languages.filter((lang) => {
+      try {
+        Intl.getCanonicalLocales(lang)
+        return true
+      } catch {
+        return false
+      }
+    })
+
+    if (validLanguages.length > 0) {
+      return match(validLanguages, i18n.locales, i18n.defaultLocale)
+    }
+  } catch {
+    // Continue if header parsing fails
+  }
+
+  // 3. Fallback default
+  return i18n.defaultLocale || 'en-US'
 }
+
+export { i18n } from './index'
