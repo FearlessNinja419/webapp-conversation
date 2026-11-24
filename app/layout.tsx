@@ -1,25 +1,22 @@
-import { getLocaleOnServer } from '@/i18n/server'
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import '@/app/styles/globals.css'
 
-import './styles/globals.css'
-import './styles/markdown.scss'
+const inter = Inter({ subsets: ['latin'] })
 
-const LocaleLayout = async ({
+export const metadata: Metadata = {
+  title: 'HKUST Academic Advisor AI',
+  description: 'Instant, grounded guidance on undergraduate regulations and course requirements.',
+}
+
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
-}) => {
-  const locale = await getLocaleOnServer()
+}) {
   return (
-    <html lang={locale ?? 'en'} className="h-full">
-      <body className="h-full">
-        <div className="overflow-x-auto">
-          <div className="w-screen h-screen min-w-[300px]">
-            {children}
-          </div>
-        </div>
-      </body>
+    <html lang="en">
+      <body className={inter.className}>{children}</body>
     </html>
   )
 }
-
-export default LocaleLayout
