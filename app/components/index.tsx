@@ -21,7 +21,6 @@ const Main: FC<IMainProps> = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputQuery, setInputQuery] = useState('')
   const [loading, setLoading] = useState(false)
-  const [conversationId, setConversationId] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -53,14 +52,11 @@ const Main: FC<IMainProps> = () => {
         {
           inputs: {},
           query: textToSend.trim(),
-          conversation_id: conversationId || undefined,
+          conversation_id: '', // Empty string prevents Dify Chatflow 500 memory crash on turn 2+
           response_mode: 'streaming',
         },
         {
-          onData: (messageContent: string, isFirstMessage: boolean, { conversationId: newConvId }: any) => {
-            if (newConvId)
-              setConversationId(newConvId)
-
+          onData: (messageContent: string) => {
             setMessages((prev) => {
               const last = prev[prev.length - 1]
               if (last && last.role === 'assistant') {
