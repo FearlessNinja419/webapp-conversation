@@ -3,6 +3,7 @@ import type { FC } from 'react'
 import React, { useEffect, useRef, useState } from 'react'
 import Header from './header'
 import Welcome from './welcome'
+import { sendChatMessage } from '@/service'
 
 export interface IMainProps {
   params: {
@@ -20,6 +21,7 @@ const Main: FC<IMainProps> = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputQuery, setInputQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  const [conversationId, setConversationId] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -35,49 +37,71 @@ const Main: FC<IMainProps> = () => {
     if (!textToSend.trim() || loading)
       return
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: textToSend.trim(),
-    }
+    const userMsgId = Date.now().toString()
+    const assistantMsgId = (Date.now() + 1).toString()
 
-    setMessages(prev => [...prev, userMessage])
+    setMessages(prev => [
+      ...prev,
+      { id: userMsgId, role: 'user', content: textToSend.trim() },
+      { id: assistantMsgId, role: 'assistant', content: '' },
+    ])
     setInputQuery('')
     setLoading(true)
 
     try {
-      const response = await fetch('/api/chat-messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: textToSend.trim(),
+      await sendChatMessage(
+        {
           inputs: {},
-          response_mode: 'blocking',
-          user: 'hkust-student',
-        }),
+          query: textToSend.trim(),
+          conversation_id: conversationId || undefined,
+          response_mode: 'streaming',
+        },
+        {
+          onData: (messageContent: string, isFirstMessage: boolean, { conversationId: newConvId }: any) => {
+            if (newConvId)
+              setConversationId(newConvId)
+
+            setMessages((prev) => {
+              const last = prev[prev.length - 1]
+              if (last && last.role === 'assistant') {
+                return [
+                  ...prev.slice(0, -1),
+                  { ...last, content: last.content + messageContent },
+                ]
+              }
+              return prev
+            })
+          },
+          onCompleted: () => {
+            setLoading(false)
+          },
+          onError: (errMsg: string) => {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1]
+              if (last && last.role === 'assistant') {
+                return [
+                  ...prev.slice(0, -1),
+                  { ...last, content: `⚠️ ${errMsg || 'Error communicating with Dify.'}` },
+                ]
+              }
+              return prev
+            })
+            setLoading(false)
+          },
+        },
+      )
+    }
+    catch {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        if (last && last.role === 'assistant') {
+          return [
+            ...prev.slice(0, -1),
+            { ...last, content: '⚠️ Could not reach the HKUST knowledge base. Please check Dify access.' },
+          ]
+        }
+        return prev
       })
-
-      const data = await response.json()
-      const answer = data.answer || data.text || 'I retrieved the information from the HKUST academic database, but no text was returned. Please try asking again.'
-
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: answer,
-      }
-      setMessages(prev => [...prev, botMessage])
-    }
-    catch (err) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: '⚠️ Failed to connect to the HKUST Advisor engine. Please check your Dify API key configuration in Vercel.',
-      }
-      setMessages(prev => [...prev, errorMessage])
-    }
-    finally {
       setLoading(false)
     }
   }
@@ -90,7 +114,6 @@ const Main: FC<IMainProps> = () => {
       {/* 2. Main Chat / Content Container */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 flex flex-col justify-between">
         <div className="flex-1 overflow-y-auto mb-4 space-y-4">
-          {/* If no messages yet, display Welcome Screen & Sample Question Cards */}
           {messages.length === 0 ? (
             <div className="pt-8">
               <Welcome onSelectPrompt={handleSend} />
@@ -114,18 +137,20 @@ const Main: FC<IMainProps> = () => {
                         <span>🏛️</span> HKUST Academic Advisor
                       </div>
                     )}
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <div className="whitespace-pre-wrap">
+                      {msg.content || (loading && msg.role === 'assistant' ? '...' : '')}
+                    </div>
                   </div>
                 </div>
               ))}
-              {loading && (
+              {loading && messages[messages.length - 1]?.content === '' && (
                 <div className="flex justify-start">
                   <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-none px-5 py-3.5 shadow-sm flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-[#003366] animate-bounce"></div>
                     <div className="w-2 h-2 rounded-full bg-[#C99700] animate-bounce [animation-delay:-.3s]"></div>
                     <div className="w-2 h-2 rounded-full bg-[#003366] animate-bounce [animation-delay:-.5s]"></div>
                     <span className="text-xs text-slate-500 font-medium ml-1">
-                      Searching SBM curriculum regulations...
+                      Consulting SBM regulations...
                     </span>
                   </div>
                 </div>
@@ -135,7 +160,7 @@ const Main: FC<IMainProps> = () => {
           )}
         </div>
 
-        {/* 3. Input Form Fixed at Bottom */}
+        {/* 3. Input Form */}
         <div className="sticky bottom-4 bg-white p-2 rounded-2xl border border-slate-300 shadow-lg flex items-center gap-2">
           <input
             type="text"
