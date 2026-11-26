@@ -4,6 +4,8 @@ This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next
 ## Config App
 Create a file named `.env.local` in the current directory and copy the contents from `.env.example`. Setting the following content:
 ```
+
+
 # APP ID: This is the unique identifier for your app. You can find it in the app's detail page URL. 
 # For example, in the URL `https://cloud.dify.ai/app/xxx/workflow`, the value `xxx` is your APP ID.
 NEXT_PUBLIC_APP_ID=
